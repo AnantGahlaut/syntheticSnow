@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SyntheticSnow SNOTEL test</title><link rel="icon" href="data:,">
+<style>
+:root{color-scheme:dark;--bg:#081216;--panel:#0d1a1e;--line:#293c40;--ink:#edf3ec;--muted:#a2b5b5;--accent:#a6e2cc;--mono:Consolas,"SFMono-Regular",monospace;--sans:"Segoe UI",Arial,sans-serif}
+*{box-sizing:border-box}html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--sans)}
+#app{display:grid;grid-template-columns:330px minmax(0,1fr);height:100%}
+#side{border-right:1px solid var(--line);background:var(--panel);padding:18px 18px 12px;overflow:auto}
+#stage{position:relative;min-width:0}canvas{display:block;width:100%;height:100%;cursor:grab}canvas:active{cursor:grabbing}
+.eyebrow{font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 6px}
+h1{font-size:22px;font-weight:450;letter-spacing:-.03em;margin:0 0 4px}.sub{color:var(--muted);font-size:12.5px;margin:0 0 16px}
+h2{font:11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px;font-weight:400}
+.opts{display:flex;flex-direction:column;gap:4px}.chips{display:flex;flex-wrap:wrap;gap:5px}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:#0a1619;color:var(--muted);padding:7px 10px;text-align:left}
+button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:#183331}
+button:disabled{opacity:.35;cursor:default}.chips button{font:12px var(--mono);padding:5px 10px}
+#legend{margin-top:6px}#ramp{height:12px;border:1px solid var(--line)}#ticks{display:flex;justify-content:space-between;font:11px var(--mono);color:var(--muted);margin-top:4px}
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font:12px var(--mono)}dt{color:var(--muted)}dd{margin:0;text-align:right}
+p.note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
+#hud{position:absolute;left:14px;bottom:12px;font:11px var(--mono);color:var(--muted);background:#081216cc;padding:5px 8px;border:1px solid var(--line)}
+#err{position:absolute;inset:auto 14px 50px 14px;color:#ffb199;font:12px var(--mono);white-space:pre-wrap}
+</style></head>
+<body><div id="app">
+<aside id="side">
+  <p class="eyebrow">SyntheticSnow · SNOTEL station test</p>
+  <h1 id="title">SNOTEL</h1>
+  <p class="sub" id="subtitle">Loading the site description…</p>
+  <p class="note" style="margin:-8px 0 4px"><a href="../lidar/" style="color:var(--accent)">← LiDAR map test (30 m)</a></p>
+  <h2>Station and winter</h2><select id="pick" style="width:100%;background:#0a1619;color:var(--ink);border:1px solid var(--line);padding:6px"></select>
+  <h2>Layer</h2><div class="opts" id="layers"></div>
+  <h2>Block size</h2><div class="chips" id="blocks"></div>
+  <p class="note" id="blocknote">The model runs on 30 m cells. LiDAR and elevation: the 3 m data averaged to the same
+    30 m cells (only where at least 80% is measured). The station is in the centre of the window.</p>
+  <h2>Colours</h2><div id="legend"><div id="ramp"></div><div id="ticks"><span id="lo"></span><span id="unit"></span><span id="hi"></span></div></div>
+  <h2>Season at the station · model vs SNOTEL</h2><div id="charts"></div><dl id="sstats"></dl>
+  <h2>Model map vs LiDAR · 30 m</h2><dl id="mapstats"></dl>
+  <p class="note">RMSE = typical error, R = how well the two follow each other (1 = perfect), bias = model minus
+    measured on average.</p>
+  <details><summary><b>How the SNOTEL test works</b></summary>
+  <p class="note"><b>What a SNOTEL station is.</b> SNOTEL ("snow telemetry") is a network of about 900 automatic
+    weather stations run by the USDA Natural Resources Conservation Service in the mountains of the western US. Each one
+    sits in a small clearing and measures, every hour: snow water equivalent with a <b>snow pillow</b> (a flat bladder of
+    antifreeze about 3 m across that weighs the snow on it), snow depth with a <b>sonic sensor</b> (it times an echo off
+    the snow surface), air temperature, and precipitation with a heated <b>gauge</b>. The values sent out each day are
+    the readings at the start of the day.</p>
+  <p class="note"><b>What the model sees.</b> The 2.4 x 2.4 km window shown here, cut from the 30 m LiDAR site grid with
+    the station in the middle: 80 x 80 cells of real bare-earth elevation and the tree height and canopy cover from the
+    LiDAR flight nearest that winter. The weather is the <b>station's own</b> daily temperature (min / max) and gauge
+    precipitation, moved up and down the slopes with the monthly lapse rates; wind, humidity and sun come from gridMET
+    at the station, because SNOTEL does not measure them. The model then runs the whole winter (1 Oct to 31 May) on all
+    6,400 cells: snowfall, trees catching snow, wind moving snow, compaction, melt and sublimation. Nothing in the model
+    is tuned to these stations.</p>
+  <p class="note"><b>How it is scored.</b> Every day, the model cell that holds the station is compared with the pillow
+    (SWE) and the sonic sensor (depth). The window around it matters because snow blows in and out of the station cell,
+    the terrain wind looks 500 m upwind, and nearby trees catch snow. Where a LiDAR flight falls in the same winter, the
+    model's whole 30 m map is also compared with the LiDAR snow depth (layers on the left).</p>
+  <p class="note"><b>Limits.</b> A 30 m model cell is compared with a pillow about 3 m across in a cleared spot, so a
+    station cell with trees can differ from what the pillow feels. One cell per station-winter tests timing and amount
+    well but cannot test patterns: the LiDAR map does that.</p>
+  </details>
+  <h2>What is loaded</h2>
+  <dl><dt>Colour detail on screen</dt><dd id="s-level">–</dd><dt>Ground detail on screen</dt><dd id="s-ground">–</dd>
+    <dt>Finest for this layer</dt><dd id="s-finest">–</dd>
+    <dt>At this layer's own detail</dt><dd id="s-exact">–</dd>
+    <dt>Colour tiles in view</dt><dd id="s-view">–</dd><dt>Ground tiles drawn</dt><dd id="s-gtiles">–</dd>
+    <dt>Tiles fetched</dt><dd id="s-fetched">0</dd><dt>Downloaded</dt><dd id="s-bytes">0 MB</dd><dt>Waiting</dt><dd id="s-pending">0</dd></dl>
+  <p class="note">The page holds no data. It reads one small description file, then fetches only the tiles the camera
+    is looking at, at the detail the zoom needs, for both the colours and the shape of the ground.</p>
+  <p class="note">Drag to orbit · right-drag or shift-drag to pan · wheel to zoom.</p>
+  <p class="note">SNOTEL: USDA NRCS. LiDAR: NASA SnowEx (NSIDC DAAC). Wind, humidity, sun: gridMET. Model:
+    SyntheticSnow, one run per station-winter on the station's own weather.</p>
+</aside>
+<div id="stage"><canvas id="gl"></canvas><div id="hud">starting…</div><div id="err"></div></div>
+</div>
+<script>
+"use strict";
+const STORE = new URLSearchParams(location.search).get("store") || "312_ID_SNTL_WY2021.zarr";
+const CHUNK = 256, FILL = -32768, PENDING = -32767, EXAG = 2.0, FOV = 40 * Math.PI / 180;
+const MAX_COLOUR_TILES = 96, MAX_GROUND_TILES = 64, KEEP_GROUND_MESHES = 130;
+const $ = id => document.getElementById(id);
+const stats = {exact: false, fetched: 0, bytes: 0, pending: 0, level: null, cell: null, inView: 0, errors: 0, ready: false, groundCell: null, groundTiles: 0, groundBase: null};
+window.__tiles = stats;
+const fail = e => { stats.errors++; $("err").textContent += (e && e.message || e) + "\n"; console.error(e); };
+
+async function getJSON(names) {
+  for (const n of names) { const r = await fetch(STORE + "/" + n); if (r.ok) return r.json(); }
+  throw new Error("Could not read the store description from " + STORE);
+}
+async function getChunk(path) {
+  const r = await fetch(STORE + "/" + path);
+  if (!r.ok) throw new Error("tile " + path + ": HTTP " + r.status);
+  const blob = await r.blob();
+  stats.bytes += blob.size; stats.fetched++;
+  const buf = await new Response(blob.stream().pipeThrough(new DecompressionStream("deflate"))).arrayBuffer();
+  return new Int16Array(buf);
+}
+
+/* ---------- WebGL ---------- */
+const canvas = $("gl"), gl = canvas.getContext("webgl2", {antialias: true, preserveDrawingBuffer: true});
+if (!gl) fail("This browser has no WebGL2.");
+const VS = `#version 300 es
+in vec3 aPos; in vec2 aUV; in vec3 aN; uniform mat4 uMVP; out vec2 vUV; out vec3 vN;
+void main(){ vUV = aUV; vN = aN; gl_Position = uMVP * vec4(aPos, 1.0); }`;
+const FS = `#version 300 es
+precision highp float; precision highp isampler2D;
+in vec2 vUV; in vec3 vN; out vec4 o;
+uniform isampler2D uCur, uCoarse; uniform sampler2D uLut, uCover;
+uniform vec2 uCurSize, uCoarseSize, uCurUV, uCoarseUV, uCoverUV;
+uniform float uScale, uOffset, uLo, uHi; uniform vec3 uSun; uniform int uBase;
+int cell(isampler2D t, vec2 size, vec2 k){ ivec2 p = ivec2(clamp(vUV * k * size, vec2(0.0), size - 1.0)); return texelFetch(t, p, 0).r; }
+void main(){
+  // the coarse whole-site ground steps aside wherever a finer ground tile is being drawn
+  if (uBase == 1 && texture(uCover, vUV * uCoverUV).r > 0.5) discard;
+  int v = cell(uCur, uCurSize, uCurUV);
+  if (v == ${PENDING}) v = cell(uCoarse, uCoarseSize, uCoarseUV);
+  if (dot(vN, vN) < 0.25) { o = vec4(0.075, 0.105, 0.115, 1.0); return; }      // the wall under a tile edge: plain and dark
+  float shade = 0.55 + 0.62 * max(dot(normalize(vN), uSun), 0.0);
+  vec3 c = vec3(0.16, 0.20, 0.21);
+  if (v > ${PENDING}) { float t = clamp((float(v) * uScale + uOffset - uLo) / max(uHi - uLo, 1e-6), 0.0, 1.0); c = texture(uLut, vec2(t, 0.5)).rgb; }
+  o = vec4(c * shade, 1.0);
+}`;
+function shader(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram(); gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+gl.bindAttribLocation(prog, 0, "aPos"); gl.bindAttribLocation(prog, 1, "aUV"); gl.bindAttribLocation(prog, 2, "aN");
+gl.linkProgram(prog); if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const U = {}; for (const n of ["uMVP","uCur","uCoarse","uLut","uCover","uCurSize","uCoarseSize","uCurUV","uCoarseUV","uCoverUV","uScale","uOffset","uLo","uHi","uSun","uBase"]) U[n] = gl.getUniformLocation(prog, n);
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+const fbo = gl.createFramebuffer();
+function intTexture(w, h){            // 16-bit integer texture, every cell marked "not loaded yet"
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.R16I, w, h);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  gl.clearBufferiv(gl.COLOR, 0, new Int32Array([PENDING, 0, 0, 0])); gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return t;
+}
+const EMPTY = new Int16Array(CHUNK * CHUNK).fill(FILL);
+function putChunk(tex, shape, r, c, data){   // data: 256 x 256 Int16, or null for "no data here"
+  const y = r * CHUNK, x = c * CHUNK, h = Math.min(CHUNK, shape[0] - y), w = Math.min(CHUNK, shape[1] - x);
+  if (h <= 0 || w <= 0) return;
+  gl.bindTexture(gl.TEXTURE_2D, tex); gl.pixelStorei(gl.UNPACK_ROW_LENGTH, CHUNK);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RED_INTEGER, gl.SHORT, data || EMPTY);
+  gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+}
+
+/* ---------- palettes ---------- */
+const RAMPS = {
+  blues: [[247,251,255],[198,219,239],[107,174,214],[33,113,181],[8,48,107]],
+  diverging: [[178,24,43],[239,138,98],[247,247,247],[103,169,207],[33,102,172]],   // red = model too shallow, blue = too deep
+  terrain: [[58,84,64],[122,140,94],[190,178,134],[226,214,190],[250,250,250]]};
+const lut = gl.createTexture();
+function setRamp(name){
+  const stops = RAMPS[name] || RAMPS.blues, px = new Uint8Array(256 * 4);
+  for (let i = 0; i < 256; i++){ const f = i / 255 * (stops.length - 1), a = Math.floor(f), b = Math.min(a + 1, stops.length - 1), t = f - a;
+    for (let k = 0; k < 3; k++) px[i * 4 + k] = Math.round(stops[a][k] * (1 - t) + stops[b][k] * t); px[i * 4 + 3] = 255; }
+  gl.bindTexture(gl.TEXTURE_2D, lut); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  $("ramp").style.background = "linear-gradient(90deg," + stops.map(s => `rgb(${s})`).join(",") + ")";
+}
+
+/* ---------- state ---------- */
+let site, extent, layer, range = [0, 1], dirty = true, hMin = 0, hMean = 0, hMax = 0;
+const layerTex = new Map();        // "key/level" -> colour texture of one level
+const cam = {yaw: 0.65, pitch: 0.78, dist: 1, target: [0, 0, 0]};
+const byKey = k => site.layers.find(l => l.key === k);
+
+/* ---------- one queue for every tile request (colours and ground) ---------- */
+const queue = []; let active = 0;
+function enqueue(path, priority, done){ stats.pending++; queue.push({path, priority, done}); queue.sort((a, b) => a.priority - b.priority); pump(); }
+function pump(){
+  while (active < 6 && queue.length){ const j = queue.shift(); active++;
+    getChunk(j.path).then(d => { j.done(d); dirty = true; }).catch(fail).finally(() => { active--; stats.pending--; pump(); }); }
+}
+
+/* ---------- colour tiles ---------- */
+function levelTex(L, i){
+  const id = L.key + "/" + i; let t = layerTex.get(id);
+  if (!t){ const lv = L.levels[i]; t = {tex: intTexture(lv.shape[1], lv.shape[0]), shape: lv.shape, have: new Set(lv.chunks), asked: new Set(), level: lv, path: L.key + "/" + lv.path};
+    layerTex.set(id, t);
+    const rows = Math.ceil(lv.shape[0] / CHUNK), cols = Math.ceil(lv.shape[1] / CHUNK);   // chunks with no file hold no data: mark them now
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (!t.have.has(r + "." + c)) { putChunk(t.tex, t.shape, r, c, null); t.asked.add(r + "." + c); } }
+  return t;
+}
+async function loadWholeLevel(L, i){     // the coarse fallback of a layer
+  const t = levelTex(L, i), jobs = [];
+  for (const name of t.have){ if (t.asked.has(name)) continue; t.asked.add(name); const [r, c] = name.split(".").map(Number);
+    jobs.push(getChunk(t.path + "/" + name).then(d => ({r, c, d}))); }
+  for (const g of await Promise.all(jobs)) putChunk(t.tex, t.shape, g.r, g.c, g.d);
+  return t;
+}
+
+/* ---------- ground ---------- */
+// A mesh has one vertex per cell centre. `get(ix, iz)` returns the height in metres or NaN.
+function buildMesh(get, nx, nz, cell, ox, oz, skirt){     // skirt: null, or which sides get a wall {top, right, bottom, left}
+  const border = skirt ? 2 * (nx + nz) : 0, v = new Float32Array((nx * nz + border) * 8), idx = [];
+  const H = (x, z) => get(Math.min(nx - 1, Math.max(0, x)), Math.min(nz - 1, Math.max(0, z)));
+  const put = (k, x, y, z, n) => { v[k] = x - extent[0] / 2; v[k + 1] = (y - hMin) * EXAG; v[k + 2] = z - extent[1] / 2; v[k + 3] = x / extent[0]; v[k + 4] = z / extent[1]; v[k + 5] = n[0]; v[k + 6] = n[1]; v[k + 7] = n[2]; };
+  const valid = new Uint8Array(nx * nz);
+  for (let z = 0; z < nz; z++) for (let x = 0; x < nx; x++){
+    const h = get(x, z), ok = h === h; valid[z * nx + x] = ok ? 1 : 0; const y = ok ? h : hMin;
+    const or = (a, b) => (a === a ? a : b), l = or(H(x - 1, z), y), r = or(H(x + 1, z), y), u = or(H(x, z - 1), y), d = or(H(x, z + 1), y);
+    put((z * nx + x) * 8, (ox + x + .5) * cell, y, (oz + z + .5) * cell, norm([-(r - l) * EXAG, 2 * cell, -(d - u) * EXAG])); }
+  for (let z = 0; z < nz - 1; z++) for (let x = 0; x < nx - 1; x++){ const a = z * nx + x;
+    if (valid[a] && valid[a + 1] && valid[a + nx] && valid[a + nx + 1]) idx.push(a, a + nx, a + 1, a + 1, a + nx, a + nx + 1); }
+  if (skirt){                                  // a wall hanging from a tile edge hides the step down to coarser ground
+    let k = nx * nz; const drop = Math.max(40, cell * 6), sides = [];
+    const run = (n, at) => { const e = []; for (let i = 0; i < n; i++) e.push(at(i)); return e; };
+    if (skirt.top) sides.push(run(nx, i => i)); if (skirt.bottom) sides.push(run(nx, i => (nz - 1) * nx + i));
+    if (skirt.left) sides.push(run(nz, i => i * nx)); if (skirt.right) sides.push(run(nz, i => i * nx + nx - 1));
+    for (const edge of sides){ const first = k;
+      for (const a of edge){ const s0 = a * 8, t = k * 8; for (let j = 0; j < 5; j++) v[t + j] = v[s0 + j]; v[t + 1] -= drop * EXAG; v[t + 5] = v[t + 6] = v[t + 7] = 0; k++; }
+      // the top of the wall re-uses the surface vertices, so only its lower part is flagged dark; keep it short of the surface colour
+      for (let i = 0; i < edge.length - 1; i++){ const p = edge[i], q = edge[i + 1]; if (valid[p] && valid[q]) idx.push(p, first + i, q, q, first + i, first + i + 1); } }
+  }
+  if (!idx.length) return null;
+  const vao = gl.createVertexArray(), vb = gl.createBuffer(), ib = gl.createBuffer(); gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vb); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 32, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, 12);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 32, 20);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  return {vao, vb, ib, count: idx.length};
+}
+function freeMesh(m){ if (!m) return; gl.deleteVertexArray(m.vao); gl.deleteBuffer(m.vb); gl.deleteBuffer(m.ib); }
+
+// One "ground source" per elevation layer: the plain 3 m elevation, or elevation averaged to a model's block size.
+const grounds = new Map(); let ground = null, coarseGrid = null;
+const cover = gl.createTexture();
+function groundFor(L){ return (L.block_m && byKey("elevation_" + L.block_m + "m")) || byKey("elevation"); }
+async function prepareGround(E){
+  let g = grounds.get(E.key); if (g) return g;
+  let bi = E.levels.length - 1; for (let i = E.levels.length - 1; i >= 0; i--) if (Math.max(...E.levels[i].shape) <= 720) bi = i;   // finest level small enough for one whole-site mesh
+  const lv = E.levels[bi], W = lv.shape[1], Hh = lv.shape[0], h = new Float32Array(W * Hh).fill(NaN);
+  await Promise.all(lv.chunks.map(async name => { const [r, c] = name.split(".").map(Number), d = await getChunk(E.key + "/" + lv.path + "/" + name);
+    for (let y = 0; y < CHUNK && r * CHUNK + y < Hh; y++) for (let x = 0; x < CHUNK && c * CHUNK + x < W; x++){
+      const q = d[y * CHUNK + x]; if (q !== FILL) h[(r * CHUNK + y) * W + c * CHUNK + x] = q * E.scale_factor + E.add_offset; } }));
+  if (!grounds.size){ let lo = Infinity, hi = -Infinity, sum = 0, n = 0; for (const q of h) if (q === q){ lo = Math.min(lo, q); hi = Math.max(hi, q); sum += q; n++; } hMin = lo; hMax = hi; hMean = sum / n; coarseGrid = {h, W, H: Hh, cell: lv.cell_m}; }
+  g = {E, baseLevel: bi, base: buildMesh((x, z) => h[z * W + x], W, Hh, lv.cell_m, 0, 0, null), heights: new Map(), asked: new Set(), meshes: new Map(), stale: new Set(), _coverUV: [1, 1],
+       have: E.levels.map(l => new Set(l.chunks))};
+  grounds.set(E.key, g); return g;
+}
+function groundTile(g, i, r, c){            // build (or rebuild) the mesh of one ground tile from the heights we hold
+  const lv = g.E.levels[i], id = i + "/" + r + "." + c, own = g.heights.get(id); if (!own) return;
+  const W = lv.shape[1], Hh = lv.shape[0], at = (rr, cc) => g.heights.get(i + "/" + rr + "." + cc);
+  const right = at(r, c + 1), down = at(r + 1, c), diag = at(r + 1, c + 1);
+  const nx = Math.min(CHUNK + 1, W - c * CHUNK), nz = Math.min(CHUNK + 1, Hh - r * CHUNK), sf = g.E.scale_factor, off = g.E.add_offset;
+  const get = (x, z) => {                   // the last row and column come from the neighbouring tiles, so tiles join without a gap
+    let src = own, xx = x, zz = z;
+    if (x >= CHUNK && z >= CHUNK){ if (diag) { src = diag; xx = 0; zz = 0; } else { xx = CHUNK - 1; zz = CHUNK - 1; } }
+    else if (x >= CHUNK){ if (right) { src = right; xx = 0; } else xx = CHUNK - 1; }
+    else if (z >= CHUNK){ if (down) { src = down; zz = 0; } else zz = CHUNK - 1; }
+    const q = src[zz * CHUNK + xx]; return q === FILL ? NaN : q * sf + off; };
+  // a wall is needed only where the next tile exists in the store but is not loaded (coarser ground shows there)
+  const open = (rr, cc) => g.have[i].has(rr + "." + cc) && !at(rr, cc);
+  const sides = {top: open(r - 1, c), left: open(r, c - 1), right: open(r, c + 1), bottom: open(r + 1, c)};
+  freeMesh(g.meshes.get(id)); const m = buildMesh(get, nx, nz, lv.cell_m, c * CHUNK, r * CHUNK, sides);
+  if (m) g.meshes.set(id, m); else g.meshes.delete(id);
+}
+function wantGround(g, i, r, c, priority){
+  const id = i + "/" + r + "." + c; if (g.asked.has(id)) return; g.asked.add(id);
+  enqueue(g.E.key + "/" + g.E.levels[i].path + "/" + r + "." + c, priority, d => {
+    g.heights.set(id, d); g.stale.add(id);
+    for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) if ((dr || dc) && g.heights.has(i + "/" + (r + dr) + "." + (c + dc))) g.stale.add(i + "/" + (r + dr) + "." + (c + dc)); });
+}
+
+/* ---------- camera ---------- */
+const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]], cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+function norm(a){ const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
+const dot = (a, b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function basis(){
+  const cp = Math.cos(cam.pitch), eye = [cam.target[0] + cam.dist * cp * Math.sin(cam.yaw), cam.target[1] + cam.dist * Math.sin(cam.pitch), cam.target[2] + cam.dist * cp * Math.cos(cam.yaw)];
+  const f = norm(sub(cam.target, eye)), r = norm(cross(f, [0, 1, 0])), u = cross(r, f); return {eye, f, r, u};
+}
+function mvp(aspect){
+  const {eye, f, r, u} = basis(), near = cam.dist * 0.02, far = cam.dist * 8 + Math.max(...extent), t = 1 / Math.tan(FOV / 2);
+  const V = [r[0],u[0],-f[0],0, r[1],u[1],-f[1],0, r[2],u[2],-f[2],0, -dot(r,eye),-dot(u,eye),dot(f,eye),1];
+  const P = [t/aspect,0,0,0, 0,t,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0], M = new Float32Array(16);
+  for (let c = 0; c < 4; c++) for (let rr = 0; rr < 4; rr++){ let s = 0; for (let k = 0; k < 4; k++) s += P[k*4+rr] * V[c*4+k]; M[c*4+rr] = s; }
+  return M;
+}
+function rayBox(aspect, levels){   // box around where rays through a grid of screen points meet the given ground levels (metres above the lowest ground)
+  const {eye, f, r, u} = basis(), th = Math.tan(FOV / 2); let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, miss = 0;
+  for (const lev of levels) for (let i = 0; i <= 8; i++) for (let j = 0; j <= 8; j++){ const nx = i / 4 - 1, ny = j / 4 - 1;
+    const d = norm([f[0] + r[0]*nx*th*aspect + u[0]*ny*th, f[1] + r[1]*nx*th*aspect + u[1]*ny*th, f[2] + r[2]*nx*th*aspect + u[2]*ny*th]);
+    const t = Math.abs(d[1]) > 1e-4 ? (lev * EXAG - eye[1]) / d[1] : -1; if (t <= 0) { miss++; continue; }
+    const x = eye[0] + d[0]*t + extent[0]/2, z = eye[2] + d[2]*t + extent[1]/2; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
+  if (miss > 40 * levels.length || !(x1 >= x0)) return [0, extent[0], 0, extent[1]];      // looking toward the horizon: anything could be in view
+  return [Math.max(0, x0), Math.min(extent[0], x1), Math.max(0, z0), Math.min(extent[1], z1)];
+}
+function viewBox(aspect){          // the ground the screen can show, in metres from the north-west corner
+  // Rays through a grid of screen points are walked forward until they go below the coarse whole-site ground.
+  // The box around those meeting points is what is visible, whatever shape the terrain has.
+  const {eye, f, r, u} = basis(), th = Math.tan(FOV / 2), G = coarseGrid, step = Math.max(G.cell, cam.dist / 80), far = cam.dist * 10 + 3000;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity, hits = 0;
+  for (let i = 0; i <= 10; i++) for (let j = 0; j <= 10; j++){ const nx = i / 5 - 1, ny = j / 5 - 1;
+    const d = norm([f[0] + r[0]*nx*th*aspect + u[0]*ny*th, f[1] + r[1]*nx*th*aspect + u[1]*ny*th, f[2] + r[2]*nx*th*aspect + u[2]*ny*th]);
+    for (let t = step; t < far; t += step){ const x = eye[0] + d[0]*t + extent[0]/2, z = eye[2] + d[2]*t + extent[1]/2, y = eye[1] + d[1]*t;
+      if (y < 0) break;                                                    // below the lowest ground: nothing further on
+      if (x < 0 || z < 0 || x >= extent[0] || z >= extent[1]) continue;
+      const q = G.h[Math.min(G.H - 1, Math.floor(z / G.cell)) * G.W + Math.min(G.W - 1, Math.floor(x / G.cell))];
+      if (q === q && y <= (q - hMin) * EXAG){ hits++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); break; } } }
+  if (hits < 3) return rayBox(aspect, [hMean - hMin]);                     // looking past the site: fall back to the average ground level
+  const pad = 2 * step + 0.06 * Math.max(x1 - x0, z1 - z0);                // the rays are a sample: leave room between them
+  return [Math.max(0, x0 - pad), Math.min(extent[0], x1 + pad), Math.max(0, z0 - pad), Math.min(extent[1], z1 + pad)];
+}
+
+/* ---------- choosing tiles ---------- */
+const metresPerPixel = () => 2 * cam.dist * Math.tan(FOV / 2) / Math.max(canvas.height, 1);   // ground covered by one screen pixel at the target
+function pickLevel(L, pixelsPerCell){ let best = L.levels.length - 1; const m = metresPerPixel() * pixelsPerCell;
+  for (let i = L.levels.length - 1; i >= 0; i--) if (L.levels[i].cell_m >= m) best = i; return best; }
+function tilesInView(lv, limit, ring = 0){          // tiles of a level the camera can see (plus `ring` tiles around), nearest to the target first
+  const box = viewBox(canvas.width / Math.max(canvas.height, 1)), cm = lv.cell_m * CHUNK, have = new Set(lv.chunks), out = [];
+  const tc = (cam.target[0] + extent[0] / 2) / cm, tr = (cam.target[2] + extent[1] / 2) / cm;
+  for (let r = Math.floor(box[2] / cm) - ring; r <= Math.floor(box[3] / cm) + ring; r++) for (let c = Math.floor(box[0] / cm) - ring; c <= Math.floor(box[1] / cm) + ring; c++)
+    if (have.has(r + "." + c)) out.push({r, c, d: Math.hypot(r + .5 - tr, c + .5 - tc)});
+  out.sort((a, b) => a.d - b.d); return out.slice(0, limit);
+}
+let groundDraw = [];
+function update(){
+  // colours: about one cell per screen pixel
+  const i = pickLevel(layer, 0.9), t = levelTex(layer, i), tiles = tilesInView(layer.levels[i], MAX_COLOUR_TILES);
+  for (const q of tiles){ const name = q.r + "." + q.c; if (!t.asked.has(name)){ t.asked.add(name);
+    enqueue(t.path + "/" + name, q.d, d => putChunk(t.tex, t.shape, q.r, q.c, d)); } }
+  stats.level = i; stats.cell = layer.levels[i].cell_m; stats.inView = tiles.length; layer._cur = t;
+  // ground: about one vertex per two pixels, never finer than this layer's own ground
+  const g = ground, gi = pickLevel(g.E, 2.0); groundDraw = [];
+  if (gi < g.baseLevel){
+    // one extra ring of ground tiles, so the join between detailed and coarse ground stays outside the picture
+    for (const q of tilesInView(g.E.levels[gi], MAX_GROUND_TILES, 1)){ wantGround(g, gi, q.r, q.c, q.d + 0.25);
+      const id = gi + "/" + q.r + "." + q.c; if (g.stale.has(id) && g.heights.has(id)){ groundTile(g, gi, q.r, q.c); g.stale.delete(id); }
+      const m = g.meshes.get(id); if (m){ m.used = performance.now(); groundDraw.push({m, r: q.r, c: q.c}); } }
+    if (g.meshes.size > KEEP_GROUND_MESHES){ const old = [...g.meshes.entries()].sort((a, b) => (a[1].used || 0) - (b[1].used || 0)).slice(0, g.meshes.size - KEEP_GROUND_MESHES);
+      for (const [id, m] of old){ freeMesh(m); g.meshes.delete(id); g.stale.add(id); } }
+  }
+  const lv = g.E.levels[gi < g.baseLevel ? gi : g.baseLevel], rows = Math.ceil(lv.shape[0] / CHUNK), cols = Math.ceil(lv.shape[1] / CHUNK), px = new Uint8Array(rows * cols);
+  for (const q of groundDraw) px[q.r * cols + q.c] = 255;
+  gl.bindTexture(gl.TEXTURE_2D, cover); gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, cols, rows, 0, gl.RED, gl.UNSIGNED_BYTE, px);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  g._coverUV = [extent[0] / (cols * CHUNK * lv.cell_m), extent[1] / (rows * CHUNK * lv.cell_m)];
+  stats.groundBase = g.E.levels[g.baseLevel].cell_m; stats.groundTiles = groundDraw.length;
+  stats.groundCell = groundDraw.length ? g.E.levels[gi].cell_m : stats.groundBase;
+}
+
+/* ---------- drawing ---------- */
+function draw(){
+  requestAnimationFrame(draw);
+  const w = canvas.clientWidth * devicePixelRatio | 0, h = canvas.clientHeight * devicePixelRatio | 0;
+  if (canvas.width !== w || canvas.height !== h){ canvas.width = w; canvas.height = h; dirty = true; }
+  $("s-level").textContent = stats.cell ? stats.cell + " m cells" : "–"; $("s-ground").textContent = stats.groundCell ? stats.groundCell + " m" : "–";
+  $("s-view").textContent = stats.inView; $("s-gtiles").textContent = stats.groundTiles;
+  // true when both the colours and the ground are drawn at exactly this layer's block size, with nothing still loading
+  stats.exact = !!(layer && ground && stats.cell === layer.cell_m && stats.groundCell === ground.E.cell_m && stats.pending === 0);
+  $("s-exact").textContent = stats.exact ? "✓ yes" : "zoom in"; $("s-exact").style.color = stats.exact ? "var(--accent)" : "";
+  $("s-fetched").textContent = stats.fetched; $("s-bytes").textContent = (stats.bytes / 1e6).toFixed(1) + " MB"; $("s-pending").textContent = stats.pending;
+  if (!dirty || !ground || !layer || !layer._coarse) return; dirty = false;
+  gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+  update();
+  gl.viewport(0, 0, w, h); gl.clearColor(0.031, 0.071, 0.086, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST);
+  gl.useProgram(prog); gl.uniformMatrix4fv(U.uMVP, false, mvp(w / h));
+  const bind = (unit, tex, loc) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); };
+  const cur = layer._cur, co = layer._coarse, uv = t => [extent[0] / (t.shape[1] * t.level.cell_m), extent[1] / (t.shape[0] * t.level.cell_m)];
+  bind(0, cur.tex, U.uCur); bind(1, co.tex, U.uCoarse); bind(2, lut, U.uLut); bind(3, cover, U.uCover); gl.activeTexture(gl.TEXTURE0);
+  gl.uniform2f(U.uCurSize, cur.shape[1], cur.shape[0]); gl.uniform2f(U.uCoarseSize, co.shape[1], co.shape[0]);
+  gl.uniform2fv(U.uCurUV, uv(cur)); gl.uniform2fv(U.uCoarseUV, uv(co)); gl.uniform2fv(U.uCoverUV, ground._coverUV);
+  gl.uniform1f(U.uScale, layer.scale_factor); gl.uniform1f(U.uOffset, layer.add_offset); gl.uniform1f(U.uLo, range[0]); gl.uniform1f(U.uHi, range[1]);
+  gl.uniform3fv(U.uSun, norm([-0.55, 0.62, -0.55]));
+  gl.uniform1i(U.uBase, 1); if (ground.base){ gl.bindVertexArray(ground.base.vao); gl.drawElements(gl.TRIANGLES, ground.base.count, gl.UNSIGNED_INT, 0); }
+  gl.uniform1i(U.uBase, 0); for (const q of groundDraw){ gl.bindVertexArray(q.m.vao); gl.drawElements(gl.TRIANGLES, q.m.count, gl.UNSIGNED_INT, 0); }
+  gl.bindVertexArray(null);
+  $("hud").textContent = `${layer.label} · colours ${stats.cell} m · ground ${stats.groundCell} m · ${stats.fetched} tiles · ${(stats.bytes / 1e6).toFixed(1)} MB`;
+}
+
+/* ---------- layer choice ---------- */
+let kind = "lidar", block = 3, chooseSeq = 0;
+async function choose(){
+  const mine = ++chooseSeq;                 // if another choice is made while this one is loading, the newer one wins
+  // every layer follows the block size; at 3 m, LiDAR and elevation are the plain full-detail layers
+  const blockOr = (name, plain) => (block > 3 && byKey(name + "_" + block + "m")) ? name + "_" + block + "m" : plain;
+  const want = kind === "prediction" ? "rf_" + block + "m" : kind === "error" ? "error_" + block + "m"
+    : kind === "snotel" ? "snotel_" + block + "m" : kind === "snotel_error" ? "snotel_error_" + block + "m"
+    : kind === "terrain" ? blockOr("elevation", "elevation") : blockOr("lidar", site.layers.find(l => l.kind === "lidar").key);
+  const L = byKey(want); if (!L) return;
+  const g = await prepareGround(groundFor(L));
+  if (!L._coarse) L._coarse = await loadWholeLevel(L, L.levels.length - 1);
+  if (mine !== chooseSeq) return;
+  layer = L; ground = g; setRamp(L.cmap);
+  range = sharedRange(L);
+  $("lo").textContent = range[0].toFixed(2); $("hi").textContent = range[1].toFixed(2); $("unit").textContent = L.units + (L.cmap === "diverging" ? " · blue = model too deep" : "");
+  $("s-finest").textContent = `${L.cell_m} m colours · ${g.E.cell_m} m ground`;
+  for (const b of $("layers").children) b.setAttribute("aria-pressed", String(b.dataset.kind === kind));
+  for (const b of $("blocks").children) b.setAttribute("aria-pressed", String(+b.dataset.block === block));
+  showStats();
+  dirty = true;
+}
+const fmt = (s, unit, digits) => s ? `<dt>RMSE</dt><dd>${s.rmse.toFixed(digits)} ${unit}</dd><dt>R</dt><dd>${s.r == null ? "–" : s.r.toFixed(2)}</dd>` +
+  `<dt>Bias</dt><dd>${s.bias >= 0 ? "+" : ""}${s.bias.toFixed(digits)} ${unit}</dd>` : "<dt>–</dt><dd></dd>";
+function showStats(){}                      // the Banner page's per-block stats; the station stats are drawn once
+let ENTRY = null;
+function chart(title, dates, model, observed, unit){       // one small SVG line chart: model (green) vs SNOTEL (white)
+  const W = 290, H = 120, L = 34, B = 18, T = 14;
+  const all = model.concat(observed.filter(v => v != null)); const top = Math.max(...all, 1e-6) * 1.05;
+  const x = i => L + (W - L - 4) * i / (dates.length - 1), y = v => T + (H - T - B) * (1 - v / top);
+  const line = (vals, colour) => { let d = "", on = false; vals.forEach((v, i) => { if (v == null) { on = false; return; } d += (on ? "L" : "M") + x(i).toFixed(1) + "," + y(v).toFixed(1); on = true; });
+    return `<path d="${d}" fill="none" stroke="${colour}" stroke-width="1.6"/>`; };
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let ticks = ""; dates.forEach((d, i) => { if (d.endsWith("-01")) ticks += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${H - B}" stroke="#293c40"/><text x="${x(i) + 2}" y="${H - 5}" fill="#a2b5b5" font-size="9">${months[+d.slice(5, 7) - 1]}</text>`; });
+  return `<svg width="${W}" height="${H}" style="display:block;margin:4px 0 8px">${ticks}` +
+    `<text x="2" y="10" fill="#edf3ec" font-size="10">${title}</text><text x="2" y="${T + 8}" fill="#a2b5b5" font-size="9">${top.toFixed(unit === "m" ? 1 : 0)} ${unit}</text>` +
+    line(observed, "#edf3ec") + line(model, "#a6e2cc") + `</svg>`;
+}
+async function showStation(){
+  const list = await (await fetch("stations.json")).json();
+  ENTRY = list.find(e => e.stem + ".zarr" === STORE) || list[0];
+  const pick = $("pick");
+  for (const e of list){ const o = document.createElement("option"); o.value = e.stem; o.textContent = `${e.name} · WY${e.water_year}${e.map_scores ? " · LiDAR" : ""}`; if (e === ENTRY) o.selected = true; pick.appendChild(o); }
+  pick.onchange = () => { location.search = "?store=" + pick.value + ".zarr"; };
+  $("title").textContent = ENTRY.name + " SNOTEL";
+  $("subtitle").textContent = `${ENTRY.triplet} · ${Math.round(ENTRY.elevation_m)} m · water year ${ENTRY.water_year} · map: ${ENTRY.map_date}`;
+  $("charts").innerHTML = chart("SWE (mm) · green = model, white = SNOTEL pillow", ENTRY.dates, ENTRY.model_swe_mm, ENTRY.snotel_swe_mm, "mm") +
+    chart("Snow depth (m) · green = model, white = SNOTEL sonic", ENTRY.dates, ENTRY.model_depth_m, ENTRY.snotel_depth_m, "m");
+  let h = `<dt><b>SWE, every day</b></dt><dd></dd>` + fmt(ENTRY.swe_scores, "mm", 0) + `<dt><b>Depth, every day</b></dt><dd></dd>` + fmt(ENTRY.depth_scores, "m", 2);
+  if (ENTRY.peak) h += `<dt>Peak SWE (SNOTEL)</dt><dd>${ENTRY.peak.snotel_swe_mm.toFixed(0)} mm · model ${ENTRY.peak.model_swe_mm.toFixed(0)} mm (${ENTRY.peak.date})</dd>`;
+  $("sstats").innerHTML = h;
+  $("mapstats").innerHTML = ENTRY.map_scores ? fmt(ENTRY.map_scores, "m", 2) + `<dt>LiDAR mean</dt><dd>${ENTRY.map_scores.observed_mean.toFixed(2)} m</dd><dt>Model mean</dt><dd>${ENTRY.map_scores.model_mean.toFixed(2)} m</dd>`
+    + (ENTRY.lidar_at_station_m != null ? `<dt>LiDAR at the station cell</dt><dd>${ENTRY.lidar_at_station_m.toFixed(2)} m</dd>` : "")
+    : `<dt>No LiDAR flight this winter</dt><dd></dd>`;
+}
+function sharedRange(L){        // one colour scale per kind of layer, so block sizes and LiDAR vs prediction can be compared by eye
+  if (L.cmap === "diverging"){ const m = Math.max(...site.layers.filter(l => l.kind === "error").map(l => Math.max(Math.abs(l.p2), Math.abs(l.p98)))); return [-m, m]; }
+  if (L.cmap === "terrain"){ const e = byKey("elevation"); return [e.p2, e.p98]; }
+  const d = site.layers.find(l => l.kind === "lidar") || site.layers.find(l => l.kind === "prediction"); return [d.p2, d.p98];
+}
+function buildUI(){
+  $("title").textContent = site.site.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  $("subtitle").textContent = `LiDAR ${site.lidar_date} · ${site.shape_3m[1].toLocaleString()} × ${site.shape_3m[0].toLocaleString()} cells at 3 m · ${site.note}`;
+  for (const [k, label] of [["lidar", "LiDAR snow depth (measured)"], ["prediction", "SyntheticSnow model"], ["error", "Model minus LiDAR"],
+                         ["snotel", "SNOTEL station everywhere"], ["snotel_error", "SNOTEL minus LiDAR"], ["terrain", "Elevation"]]){
+    if (k.startsWith("snotel") && !site.layers.some(l => l.kind === "snotel")) continue;
+    if ((k === "lidar" || k === "error") && !site.layers.some(l => l.kind === "lidar")) continue;
+    const b = document.createElement("button"); b.textContent = label; b.dataset.kind = k; b.onclick = () => { kind = k; choose().catch(fail); }; $("layers").appendChild(b); }
+  const blocks = site.layers.filter(l => l.kind === "prediction").map(l => l.block_m).sort((a, b) => a - b);
+  if (!blocks.includes(block)) block = blocks[blocks.length - 1];
+  for (const n of blocks){ const b = document.createElement("button"); b.textContent = n + " m"; b.dataset.block = n; b.onclick = () => { block = n; choose().catch(fail); }; $("blocks").appendChild(b); }
+}
+
+/* ---------- input ---------- */
+let drag = null;
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+canvas.addEventListener("pointerdown", e => { drag = {x: e.clientX, y: e.clientY, pan: e.button === 2 || e.shiftKey}; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointerup", () => drag = null);
+canvas.addEventListener("pointermove", e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.pan){ const {r} = basis(), k = cam.dist * 0.0016, fw = norm([Math.sin(cam.yaw), 0, Math.cos(cam.yaw)]);
+    cam.target[0] += -r[0] * dx * k - fw[0] * dy * k; cam.target[2] += -r[2] * dx * k - fw[2] * dy * k; }
+  else { cam.yaw -= dx * 0.005; cam.pitch = Math.min(1.5, Math.max(0.12, cam.pitch + dy * 0.005)); }
+  dirty = true; });
+canvas.addEventListener("wheel", e => { e.preventDefault(); cam.dist = Math.min(Math.max(extent[0], extent[1]) * 3, Math.max(60, cam.dist * Math.exp(e.deltaY * 0.0012))); dirty = true; }, {passive: false});
+window.__setView = (dist, tx, tz) => { if (dist > 0) cam.dist = dist; if (tx !== undefined){ cam.target[0] = tx; cam.target[2] = tz; } dirty = true; };   // used by the automated check
+
+(async () => {
+  const meta = await getJSON([".zmetadata", "zmetadata.json"]);
+  site = meta.metadata[".zattrs"]; extent = [site.shape_3m[1] * 3, site.shape_3m[0] * 3];
+  if (!site.layers.some(l => l.kind === "lidar")) kind = "prediction";
+  buildUI(); await showStation(); await prepareGround(byKey("elevation"));
+  cam.dist = Math.max(extent[0], extent[1]) * 1.25; cam.target = [0, (hMean - hMin) * EXAG, 0];
+  await choose(); stats.ready = true; draw();
+})().catch(fail);
+</script></body></html>

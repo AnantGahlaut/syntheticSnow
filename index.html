@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SyntheticSnow results</title><link rel="icon" href="data:,">
+<style>
+:root{color-scheme:dark;--bg:#081216;--panel:#0d1a1e;--line:#293c40;--ink:#edf3ec;--muted:#a2b5b5;--accent:#a6e2cc;--mono:Consolas,"SFMono-Regular",monospace;--sans:"Segoe UI",Arial,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans)}
+main{max-width:760px;margin:0 auto;padding:48px 16px}
+.eyebrow{font:11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 8px}
+h1{font-size:30px;font-weight:450;letter-spacing:-.03em;margin:0 0 12px}p{color:var(--muted);margin:0 0 14px}
+a.card{display:block;border:1px solid var(--line);background:var(--panel);padding:18px 20px;margin:14px 0;color:var(--ink);text-decoration:none}
+a.card:hover{border-color:var(--accent)}a.card b{color:var(--accent);font-weight:500}a.card span{display:block;color:var(--muted);font-size:13.5px;margin-top:4px}
+footer{margin-top:36px;font-size:12.5px;color:var(--muted)}
+</style></head>
+<body><main>
+<p class="eyebrow">SyntheticSnow · CryoGARS, Boise State University</p>
+<h1>A physics snow model, tested against real snow</h1>
+<p>SyntheticSnow simulates a whole winter of mountain snow on a 30 m grid, from the terrain, the trees and the daily
+  weather: snowfall, trees catching snow, wind moving snow, compaction, melt and sublimation. It will be used to make
+  realistic training data for a neural network that maps snow from radar. These pages compare the model with
+  measurements it never saw. Nothing in the model is tuned to them.</p>
+<a class="card" href="lidar/"><b>LiDAR map test · 30 m →</b>
+  <span>Model snow-depth maps vs airborne LiDAR at 9 SnowEx site-dates (Idaho, Colorado, Utah; 2020-2021) and at
+  every NIVAL flight over Mores Creek, Idaho, in winter 2026 (about every 12 days, December to April), plus a 12-day
+  forecast test.</span></a>
+<a class="card" href="snotel/"><b>SNOTEL station test →</b>
+  <span>The model through the whole winter at 16 SNOTEL station-winters, run on each station's own weather, compared
+  every day with the snow pillow (SWE) and sonic depth sensor.</span></a>
+<footer>Data: NASA SnowEx and NIVAL airborne LiDAR (NSIDC DAAC), USDA NRCS SNOTEL, gridMET. Interactive 3D views need a
+  browser with WebGL2.</footer>
+</main></body></html>
