@@ -53,8 +53,8 @@ p.note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
     flight and runs on the weather to the next flight; its predicted change in depth is compared with the measured
     change. Two simple baselines: no change at all, and the change at the SNOTEL station applied everywhere.</p>
   <p class="note"><b>Limits.</b> 30 m only: at 3 m the LiDAR's own noise and small features the model cannot know
-    dominate. In the big 2026 winter at Mores Creek the pattern is right but the model is about 1.6-1.9 times too
-    deep: its spring melt is too weak and the weather input brings more snow than the snow pillow gained.</p>
+    dominate. In the big 2026 winter at Mores Creek the pattern is right but the model is still too deep (typically
+    1.4-2 times the LiDAR): the weather input brings more snow than the snow pillow gained.</p>
   </details>
   <h2>What is loaded</h2>
   <dl><dt>Colour detail on screen</dt><dd id="s-level">–</dd><dt>Ground detail on screen</dt><dd id="s-ground">–</dd>
@@ -65,6 +65,8 @@ p.note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
   <p class="note">The page holds no data. It reads one small description file, then fetches only the tiles the camera
     is looking at, at the detail the zoom needs, for both the colours and the shape of the ground.</p>
   <p class="note">Drag to orbit · right-drag or shift-drag to pan · wheel to zoom.</p>
+  <p class="note"><b>Model version:</b> V5 baseline (2 Nov 2026): energy-balance melt, ageing albedo, meltwater
+    drains once the pack has warmed (5-day running air temperature), wind-shifted snowfall onto lee slopes.</p>
   <p class="note">LiDAR: NASA SnowEx (NSIDC DAAC); Mores Creek 2026: NIVAL airborne LiDAR (NSIDC DAAC). Weather:
     gridMET. Elevation and trees: the LiDAR surveys. SNOTEL: USDA NRCS. Model: SyntheticSnow.</p>
 </aside>
