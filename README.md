@@ -17,8 +17,10 @@ These pages compare the model with measurements it never saw; nothing in the mod
 
 ## Model version
 
-V5 baseline (2 November 2026): energy-balance melt, ageing albedo, meltwater drains once the pack has warmed (5-day
-running air temperature), wind-shifted snowfall onto lee slopes.
+V5.2 (5 November 2026): energy-balance melt, ageing albedo, meltwater drains once the pack has warmed (5-day running
+air temperature), wind-shifted snowfall onto lee slopes. New in V5.2: snow blown by the wind settles downwind over about
+150 m instead of in the next cell, each wind step's change is smoothed over 3 x 3 cells (no snow lost or made), and
+snowfall stops increasing with height 300 m above the weather's reference height (snow levels off near the crests).
 
 ## Data
 

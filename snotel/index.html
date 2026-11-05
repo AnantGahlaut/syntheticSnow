@@ -67,8 +67,11 @@ p.note{color:var(--muted);font-size:12.5px;margin:8px 0 0}
   <p class="note">The page holds no data. It reads one small description file, then fetches only the tiles the camera
     is looking at, at the detail the zoom needs, for both the colours and the shape of the ground.</p>
   <p class="note">Drag to orbit · right-drag or shift-drag to pan · wheel to zoom.</p>
-  <p class="note"><b>Model version:</b> V5 baseline (2 Nov 2026): energy-balance melt, ageing albedo, meltwater
-    drains once the pack has warmed (5-day running air temperature), wind-shifted snowfall onto lee slopes.</p>
+  <p class="note"><b>Model version:</b> V5.2 (5 Nov 2026): energy-balance melt, ageing albedo, meltwater
+    drains once the pack has warmed (5-day running air temperature), wind-shifted snowfall onto lee slopes. New in V5.2:
+    snow blown by the wind settles downwind over about 150 m instead of in the next cell, each wind step's change is
+    smoothed over 3 x 3 cells (no snow lost or made), and snowfall stops increasing with height 300 m above the
+    weather's reference height (snow levels off near the crests).</p>
   <p class="note">SNOTEL: USDA NRCS. LiDAR: NASA SnowEx (NSIDC DAAC). Wind, humidity, sun: gridMET. Model:
     SyntheticSnow, one run per station-winter on the station's own weather.</p>
 </aside>
